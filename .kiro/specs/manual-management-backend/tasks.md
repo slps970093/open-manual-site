@@ -6,7 +6,7 @@
 
 ## 任務
 
-- [ ] 1. 設置項目結構和配置
+- [x] 1. 設置項目結構和配置
   - 安裝必要的 Composer 套件（ClosureTable、spatie/laravel-translatable、CKEditor、laravel-filemanager）
   - 創建 config/manual.php 配置文件
   - 發佈 laravel-filemanager 配置文件
