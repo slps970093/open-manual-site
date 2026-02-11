@@ -12,16 +12,36 @@ class FrontendController extends Controller
     /**
      * Display the homepage with all public manuals.
      *
-     * Validates: Requirements 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7
+     * Validates: Requirements 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 4.1, 4.2
      *
+     * @param Request $request
      * @return \Illuminate\View\View
      */
-    public function index()
+    public function index(Request $request)
     {
-        // Get all public manuals
+        // Get language from request parameter or use default
+        $requestedLang = $request->query('lang');
+
+        // Get supported languages from config
+        $supportedLanguages = array_keys(config('manual.supported_languages', []));
+
+        // Validate and set the language
+        if ($requestedLang && in_array($requestedLang, $supportedLanguages)) {
+            app()->setLocale($requestedLang);
+        }
+
+        $currentLang = app()->getLocale();
+
+        // Get all public manuals with eager loading to avoid N+1 queries
+        // Filter by language - only show manuals that have translations in the current language
         $manuals = Manual::where('is_public', true)
             ->orderBy('created_at', 'desc')
-            ->get();
+            ->get()
+            ->filter(function ($manual) use ($currentLang) {
+                // Only include manuals that have a translation in the current language
+                return $manual->hasTranslation('name', $currentLang);
+            })
+            ->values();
 
         return view('frontend.index', compact('manuals'));
     }

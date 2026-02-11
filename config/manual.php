@@ -12,10 +12,16 @@ return [
     |
     */
     'supported_languages' => [
-        'en' => 'English',
         'zh-TW' => '繁體中文',
+        'en' => 'English',
         'zh-CN' => '簡體中文',
         'ja' => '日本語',
+        'ko' => '한국어',
+        'es' => 'Español',
+        'fr' => 'Français',
+        'de' => 'Deutsch',
+        'ru' => 'Русский',
+        'ar' => 'العربية',
     ],
 
     /*
