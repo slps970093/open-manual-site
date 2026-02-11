@@ -38,25 +38,8 @@
         <nav class="navbar navbar-expand-lg navbar-light bg-light-gray sticky-top">
             <div class="container-fluid">
                 <a class="navbar-brand fw-bold" href="{{ route('frontend.manuals') }}">Docs</a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
-                    <div class="d-flex align-items-center gap-2">
-                        <span class="text-muted small">語言:</span>
-                        <select class="form-select form-select-sm" id="languageSelector" style="width: auto;" aria-label="選擇語言">
-                            <option value="zh-TW" selected>繁體中文</option>
-                            <option value="en">English</option>
-                            <option value="zh-CN">简体中文</option>
-                            <option value="ja">日本語</option>
-                            <option value="ko">한국어</option>
-                            <option value="es">Español</option>
-                            <option value="fr">Français</option>
-                            <option value="de">Deutsch</option>
-                            <option value="ru">Русский</option>
-                            <option value="ar">العربية</option>
-                        </select>
-                    </div>
+                <div class="ms-auto">
+                    <x-language-selector id="languageSelector" size="sm" />
                 </div>
             </div>
         </nav>
@@ -111,27 +94,9 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const searchInput = document.getElementById('searchInput');
-            const languageSelector = document.getElementById('languageSelector');
             const manualGrid = document.getElementById('manualGrid');
             const emptySearchState = document.getElementById('emptySearchState');
             const manualCards = document.querySelectorAll('.manual-card-wrapper');
-
-            // 從 localStorage 恢復語言偏好
-            const savedLanguage = localStorage.getItem('preferredLanguage');
-            if (savedLanguage) {
-                languageSelector.value = savedLanguage;
-            }
-
-            // 語言選擇器變更事件
-            languageSelector.addEventListener('change', function() {
-                const selectedLanguage = this.value;
-                localStorage.setItem('preferredLanguage', selectedLanguage);
-
-                // 重新加載頁面以應用語言變更
-                const url = new URL(window.location);
-                url.searchParams.set('lang', selectedLanguage);
-                window.location.href = url.toString();
-            });
 
             // 搜尋功能
             searchInput.addEventListener('input', function() {

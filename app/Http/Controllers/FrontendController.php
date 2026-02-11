@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Manual;
+use App\Models\ManualMenu;
 use App\Models\ManualPageInfo;
 use App\Models\ManualPageContent;
 use Illuminate\Http\Request;
@@ -49,26 +50,36 @@ class FrontendController extends Controller
     /**
      * Display a specific manual with its menu tree.
      *
-     * Validates: Requirements 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8
+     * Validates: Requirements 1.1, 1.3, 1.4, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8
      *
      * @param string $slug
      * @return \Illuminate\View\View
      */
     public function manual($slug)
     {
-        // Get the manual by URL slug
+        // Get the manual by URL slug and verify it's public
+        // Returns 404 if manual doesn't exist or is not public
         $manual = Manual::where('url_slug', $slug)
             ->where('is_public', true)
             ->firstOrFail();
 
-        // Get root menu items with their children (ClosureTable provides children() relationship)
-        $menus = $manual->menus()
+        // Get current language
+        $currentLang = app()->getLocale();
+
+        // Get root menu items with eager loading to avoid N+1 queries
+        // Load all descendants at once using ClosureTable
+        $menus = ManualMenu::where('manual_id', $manual->id)
             ->whereNull('parent_id')
             ->with('pageInfo')
-            ->orderBy('position')
+            ->orderBy('position', 'asc')
             ->get();
 
-        return view('frontend.manual', compact('manual', 'menus'));
+        // Load descendants for each root menu item
+        foreach ($menus as $menu) {
+            $menu->setRelation('descendants', $menu->descendants()->with('pageInfo')->get());
+        }
+
+        return view('frontend.manual', compact('manual', 'menus', 'currentLang'));
     }
 
     /**
@@ -211,7 +222,7 @@ class FrontendController extends Controller
         $breadcrumbs = [
             [
                 'name' => 'Home',
-                'url' => route('frontend.index')
+                'url' => route('frontend.manuals')
             ]
         ];
 
