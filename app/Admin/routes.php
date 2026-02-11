@@ -12,5 +12,8 @@ Route::group([
 ], function (Router $router) {
 
     $router->get('/', 'HomeController@index')->name('home');
+    $router->resource('manuals', 'ManualController');
+    $router->resource('manual-menus', 'ManualMenuController');
+    $router->resource('manual-page-infos', 'ManualPageInfoController');
 
 });

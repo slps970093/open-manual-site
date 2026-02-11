@@ -44,6 +44,196 @@ Models (數據操作和驗證)
 Database (持久化存儲)
 ```
 
+## UI/UX 改進
+
+### Manual 列表頁面快速導航
+
+Manual 列表頁面現在包含兩個快速導航列，允許管理員直接跳轉到相關的菜單和頁面信息列表：
+
+1. **書本目錄清單列** - 顯示一個「查看」按鈕，點擊後導向到 `/admin/manual-menus?manual_id={id}` 頁面，自動過濾該手冊的菜單
+2. **書本內容清單列** - 顯示一個「查看」按鈕，點擊後導向到 `/admin/manual-page-infos?manual_id={id}` 頁面，自動過濾該手冊的頁面信息
+
+這些列使用 Laravel-Admin 的 `display()` 方法生成帶有圖標的按鈕，提供快速的上下文導航。
+
+### Manual 菜單表單中的自動 Manual 選擇
+
+當從 Manual 列表頁面的快速導航按鈕進入菜單創建表單時，系統會自動從 URL 查詢參數 `manual_id` 中讀取並預填充 `manual_id` 字段。該字段保持可編輯狀態，允許用戶在需要時更改所選的手冊。
+
+### Manual 詳情頁面的菜單樹狀結構
+
+Manual 詳情頁面使用 ClosureTable 的 `whereNull('parent_id')` 方法高效地查詢根菜單項，而不是使用複雜的遞迴 SQL 查詢。菜單樹狀結構通過 Blade 視圖模板遞迴渲染，使用 `menu-tree-item.blade.php` 部分視圖來顯示每個菜單項及其子項。
+
+### 動態 Page Info 過濾
+
+當菜單項的 `click_action` 設置為 "page" 時，系統使用 AJAX 動態更新 Page Info 下拉列表。當用戶更改 Manual 選擇時，JavaScript 會發送一個 AJAX 請求到 `/admin/manual-page-infos` 端點，並在 HTTP 請求頭中設置 `Accept: application/json`。
+
+**AJAX 請求流程**：
+1. 用戶更改 Manual 選擇
+2. JavaScript 檢測到 `manual_id` 變化
+3. 發送 AJAX GET 請求到 `/admin/manual-page-infos?manual_id={id}`，並設置 `Accept: application/json` 頭
+4. `ManualPageInfoController::index()` 檢測到 AJAX 請求（通過檢查 Accept 頭）
+5. 返回 JSON 格式的 Page Info 列表
+6. JavaScript 更新下拉列表選項
+
+**AJAX 檢測機制**：
+- 使用 `request()->header('Accept') === 'application/json'` 來區分 AJAX 請求和常規 UI 導航
+- 這避免了創建單獨的 API 路由，而是重用現有的資源路由
+
+### 多語言表單數據轉換
+
+在保存多語言表單時，系統需要將多個語言字段（例如 `title.en`, `title.zh-CN`）轉換為 JSON 格式。這是通過在表單的 `saving` 回調中直接設置 `$form->model()->fieldName` 來實現的：
+
+```php
+$form->saving(function (Form $form) {
+    $titleData = request('title', []);
+    $titleValues = is_array($titleData) ? array_filter($titleData) : [];
+    
+    if (empty($titleValues)) {
+        // 驗證失敗
+        return false;
+    }
+    
+    // 直接設置模型的可翻譯字段
+    $form->model()->title = $titleValues;
+});
+```
+
+Spatie Translatable 會自動將這個數組序列化為 JSON 格式並存儲到數據庫。
+
+## 組件和接口
+
+### Manual 控制器
+
+**職責**：管理 Manual 資源的 CRUD 操作和 Laravel-Admin 界面
+
+**主要方法**：
+
+1. **grid()** - 生成 Manual 列表表格
+   - 顯示列：ID、URL Slug、名稱、描述、菜單列表快速導航、頁面信息列表快速導航、發布狀態、創建時間
+   - 快速導航列使用按鈕鏈接到過濾後的菜單和頁面信息列表
+   - 支持按 URL Slug 和發布狀態進行篩選
+
+2. **form()** - 生成 Manual 創建/編輯表單
+   - 字段：url_slug（唯一性驗證）、name（多語言）、description（多語言）、is_public（開關）
+   - 使用 `TranslatableFormHelper` 生成多語言輸入字段
+   - 實現自定義驗證和成功消息
+
+3. **show()** - 顯示 Manual 詳情頁面
+   - 使用 ClosureTable 的 `whereNull('parent_id')` 查詢根菜單項
+   - 通過 Blade 視圖遞迴渲染菜單樹狀結構
+   - 顯示手冊的基本信息和菜單樹
+
+### ManualMenu 控制器
+
+**職責**：管理 ManualMenu 資源的 CRUD 操作和 Laravel-Admin 界面
+
+**主要方法**：
+
+1. **grid()** - 生成 ManualMenu 列表表格
+   - 顯示列：ID、所屬手冊、菜單路徑、菜單名稱（帶樹狀縮進）、點擊動作、URL、頁面信息、創建時間
+   - 支持按手冊和點擊動作進行篩選
+   - 禁用分頁以顯示完整的樹狀結構
+   - 按 manual_id、parent_id、position、id 排序
+
+2. **form()** - 生成 ManualMenu 創建/編輯表單
+   - 字段：manual_id（必填）、parent_id（可選）、name（多語言）、click_action、url、manual_page_info_id
+   - 使用 `TranslatableFormHelper` 生成多語言輸入字段
+   - 實現條件性字段顯示（基於 click_action）
+   - 實現 AJAX 動態 Page Info 過濾
+   - 實現樹狀操作（移動、刪除）
+
+3. **AJAX 動態 Page Info 過濾**
+   - 當用戶更改 Manual 選擇時，JavaScript 發送 AJAX 請求
+   - 請求頭設置 `Accept: application/json`
+   - 返回 JSON 格式的 Page Info 列表
+   - 動態更新 Page Info 下拉列表
+
+### ManualPageInfo 控制器
+
+**職責**：管理 ManualPageInfo 資源的 CRUD 操作和 Laravel-Admin 界面
+
+**主要方法**：
+
+1. **index()** - 生成 ManualPageInfo 列表表格或返回 AJAX JSON 數據
+   - 檢測 AJAX 請求（通過 `Accept: application/json` 頭）
+   - 如果是 AJAX 請求，返回 JSON 格式的 Page Info 列表
+   - 否則，返回 Laravel-Admin 列表頁面
+   - 顯示列：ID、所屬手冊、頁面標題、關鍵詞、可用語言、創建時間
+
+2. **form()** - 生成 ManualPageInfo 創建/編輯表單
+   - 字段：manual_id（必填）、title（多語言）、keyword（多語言）、page_contents（多語言編輯器）
+   - 使用 `TranslatableFormHelper` 生成多語言輸入字段
+   - 實現多語言頁面內容編輯（按語言標籤頁）
+   - 集成 CKEditor 富文本編輯器
+   - 集成 laravel-filemanager 圖片上傳功能
+   - 實現多語言表單數據轉換
+
+3. **renderPageContentTabs()** - 渲染多語言頁面內容編輯標籤頁
+   - 為每種支持的語言創建一個標籤頁
+   - 在每個標籤頁中顯示 CKEditor 編輯器
+   - 集成 laravel-filemanager 圖片上傳功能
+
+4. **savePageContents()** - 保存多語言頁面內容
+   - 遍歷所有語言的頁面內容
+   - 如果內容不為空，創建或更新 ManualPageContent 記錄
+   - 處理圖片路徑（支持 CDN 替換）
+
+5. **AJAX 檢測機制**
+   - 使用 `request()->header('Accept') === 'application/json'` 檢測 AJAX 請求
+   - 避免創建單獨的 API 路由，重用現有的資源路由
+
+### ManualPageContent 模型
+
+**職責**：管理特定語言的頁面內容
+
+**屬性**：
+- `id` (PK): 主鍵
+- `manual_page_info_id` (FK): 關聯的頁面信息 ID
+- `lang` (VARCHAR): 語言代碼 (e.g., 'en', 'zh-TW')
+- `content` (LONGTEXT): 頁面內容（HTML 格式，由 CKEditor 生成）
+- `created_at`, `updated_at`: 時間戳
+
+**表名**：`manual_page_content`
+
+**關係**：
+- `belongsTo('ManualPageInfo')`: 多對一關係到頁面信息
+
+**特性**：
+- 複合唯一索引：`(manual_page_info_id, lang)`
+- 使用 CKEditor 進行富文本編輯
+- 支持通過 laravel-filemanager 插入圖片
+
+## 表單驗證和數據轉換
+
+### 多語言字段驗證
+
+對於可翻譯字段（如 `title`、`name`），系統需要驗證至少一種語言有內容。這是通過在表單的 `saving` 回調中檢查過濾後的數據來實現的：
+
+```php
+$form->saving(function (Form $form) {
+    $titleData = request('title', []);
+    $titleValues = is_array($titleData) ? array_filter($titleData) : [];
+    
+    if (empty($titleValues)) {
+        admin_error(__('admin/manual.error.create'), __('admin/manual.validation.title_required'));
+        return false;
+    }
+    
+    // 直接設置模型的可翻譯字段
+    $form->model()->title = $titleValues;
+});
+```
+
+### 條件性字段驗證
+
+對於 ManualMenu 的 `click_action` 字段，系統需要根據選擇的動作驗證相應的字段：
+
+- **external**: 必須填充 `url` 字段，`manual_page_info_id` 必須為空
+- **page**: 必須指定 `manual_page_info_id`，`url` 必須為空
+- **expand**: `url` 和 `manual_page_info_id` 都必須為空
+
+這是通過在表單的 `saving` 回調中檢查 `click_action` 值並相應地清除字段來實現的。
+
 ## 組件和接口
 
 ### 1. Manual 模型
