@@ -10,8 +10,8 @@ Route::get('/', [FrontendController::class, 'index'])->name('frontend.manuals');
 // Manual detail page
 Route::get('/manuals/{slug}', [FrontendController::class, 'manual'])->name('frontend.manual');
 
-// Manual page content
-Route::get('/manuals/page/{id}', [FrontendController::class, 'page'])->name('frontend.page');
+// Manual page content (nested under manual)
+Route::get('/manuals/{slug}/page/{id}', [FrontendController::class, 'page'])->name('frontend.page');
 
 // Search
 Route::get('/search', [FrontendController::class, 'search'])->name('frontend.search');

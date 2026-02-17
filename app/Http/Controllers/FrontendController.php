@@ -6,6 +6,7 @@ use App\Models\Manual;
 use App\Models\ManualMenu;
 use App\Models\ManualPageInfo;
 use App\Models\ManualPageContent;
+use App\Services\PageContentService;
 use Illuminate\Http\Request;
 
 class FrontendController extends Controller
@@ -50,13 +51,24 @@ class FrontendController extends Controller
     /**
      * Display a specific manual with its menu tree.
      *
-     * Validates: Requirements 1.1, 1.3, 1.4, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8
+     * Validates: Requirements 1.1, 1.3, 1.4, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 4.1
      *
      * @param string $slug
      * @return \Illuminate\View\View
      */
     public function manual($slug)
     {
+        // Get language from request parameter or use default
+        $requestedLang = request()->query('lang');
+
+        // Get supported languages from config
+        $supportedLanguages = array_keys(config('manual.supported_languages', []));
+
+        // Validate and set the language
+        if ($requestedLang && in_array($requestedLang, $supportedLanguages)) {
+            app()->setLocale($requestedLang);
+        }
+
         // Get the manual by URL slug and verify it's public
         // Returns 404 if manual doesn't exist or is not public
         $manual = Manual::where('url_slug', $slug)
@@ -67,38 +79,80 @@ class FrontendController extends Controller
         $currentLang = app()->getLocale();
 
         // Get root menu items with eager loading to avoid N+1 queries
-        // Load all descendants at once using ClosureTable
         $menus = ManualMenu::where('manual_id', $manual->id)
             ->whereNull('parent_id')
             ->with('pageInfo')
             ->orderBy('position', 'asc')
             ->get();
 
-        // Load descendants for each root menu item
+        // Load all descendants with their pageInfo relationships
+        // This ensures all menu items have their pageInfo loaded
         foreach ($menus as $menu) {
-            $menu->setRelation('descendants', $menu->descendants()->with('pageInfo')->get());
+            $this->loadMenuDescendants($menu);
         }
 
-        return view('frontend.manual', compact('manual', 'menus', 'currentLang'));
+        // Get current page ID from session or request (if coming from a page view)
+        $currentPageId = session('current_page_id', null);
+
+        // Build breadcrumbs for the manual detail page
+        // On the manual detail page, breadcrumbs show: Home > Manual Name
+        $breadcrumbs = [
+            [
+                'name' => $manual->getTranslation('name', $currentLang),
+                'url' => null
+            ]
+        ];
+
+        return view('frontend.manual', compact('manual', 'menus', 'currentLang', 'currentPageId', 'breadcrumbs'));
+    }
+
+    /**
+     * Recursively load all descendants with their pageInfo relationships
+     */
+    private function loadMenuDescendants(ManualMenu $menu)
+    {
+        // Load direct children with pageInfo
+        $children = $menu->children()->with('pageInfo')->orderBy('position')->get();
+        $menu->setRelation('children', $children);
+
+        // Recursively load descendants for each child
+        foreach ($children as $child) {
+            $this->loadMenuDescendants($child);
+        }
     }
 
     /**
      * Display a specific page content.
      *
-     * Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8
+     * Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 4.1, 4.2, 4.3, 6.1, 6.2, 6.4, 6.6
      *
      * @param int $id
      * @return \Illuminate\View\View
      */
-    public function page($id)
+    public function page($slug, $id)
     {
+        // Get language from request parameter or use default
+        $requestedLang = request()->query('lang');
+
+        // Get supported languages from config
+        $supportedLanguages = array_keys(config('manual.supported_languages', []));
+
+        // Validate and set the language
+        if ($requestedLang && in_array($requestedLang, $supportedLanguages)) {
+            app()->setLocale($requestedLang);
+        }
+
+        // Get the manual by URL slug and verify it's public
+        $manual = Manual::where('url_slug', $slug)
+            ->where('is_public', true)
+            ->firstOrFail();
+
         // Get the page info
         $pageInfo = ManualPageInfo::findOrFail($id);
-        $manual = $pageInfo->manual;
 
-        // Check if manual is public
-        if (!$manual->is_public) {
-            abort(403, 'This manual is not public');
+        // Verify the page belongs to this manual
+        if ($pageInfo->manual_id !== $manual->id) {
+            abort(404, 'Page not found in this manual');
         }
 
         // Get the current language
@@ -109,10 +163,23 @@ class FrontendController extends Controller
             ->where('lang', $currentLang)
             ->first();
 
-        // If content not found in current language, show error
+        // If content not found in current language, try to find any available language
+        // Validates: Requirements 5.3, 11.3 (fallback behavior for missing translations)
         if (!$content) {
-            abort(404, "Content not available in {$currentLang}");
+            $content = $pageInfo->pageContents()->first();
+
+            // If still no content found, return 404 with detailed error
+            if (!$content) {
+                $availableLangs = $pageInfo->pageContents()->pluck('lang')->implode(', ');
+                \Log::warning("No content available for page {$id} in manual {$slug}. Available languages: {$availableLangs}");
+                abort(404, "No content available for this page. Please ensure the page has content in at least one language.");
+            }
         }
+
+        // Process page content: clean HTML, convert Markdown, add responsive classes
+        // Validates: Requirements 6.2, 6.4, 6.6
+        $processedContent = $content->replicate();
+        $processedContent->content = PageContentService::process($content->content, 'html');
 
         // Get root menu items for sidebar navigation
         $menus = $manual->menus()
@@ -121,10 +188,19 @@ class FrontendController extends Controller
             ->orderBy('position')
             ->get();
 
-        // Build breadcrumb trail from menu hierarchy
-        $breadcrumbs = $this->buildBreadcrumbs($pageInfo);
+        // Load all descendants with their pageInfo relationships
+        foreach ($menus as $menu) {
+            $this->loadMenuDescendants($menu);
+        }
 
-        return view('frontend.page', compact('pageInfo', 'manual', 'menus', 'content', 'breadcrumbs'));
+        // Set the current page ID in session for menu highlighting
+        session(['current_page_id' => $id]);
+
+        // Build breadcrumb trail from menu hierarchy
+        // Validates: Properties 6, 7, 8
+        $breadcrumbs = $this->buildBreadcrumbs($pageInfo, $currentLang);
+
+        return view('frontend.page', compact('pageInfo', 'manual', 'menus', 'processedContent', 'breadcrumbs', 'currentLang', 'id'));
     }
 
     /**
@@ -191,7 +267,7 @@ class FrontendController extends Controller
                 'manual' => $manual->getTranslation('name', app()->getLocale()),
                 'manual_slug' => $manual->url_slug,
                 'snippet' => $snippet,
-                'url' => route('frontend.page', ['id' => $pageInfo->id]),
+                'url' => route('frontend.page', ['slug' => $manual->url_slug, 'id' => $pageInfo->id]),
             ];
         });
 
@@ -214,23 +290,17 @@ class FrontendController extends Controller
     /**
      * Build breadcrumb trail for a page based on menu hierarchy.
      *
+     * Validates: Properties 6, 7, 8
+     *
      * @param ManualPageInfo $pageInfo
+     * @param string $currentLang
      * @return array
      */
-    private function buildBreadcrumbs(ManualPageInfo $pageInfo)
+    private function buildBreadcrumbs(ManualPageInfo $pageInfo, $currentLang)
     {
-        $breadcrumbs = [
-            [
-                'name' => 'Home',
-                'url' => route('frontend.manuals')
-            ]
-        ];
+        $breadcrumbs = [];
 
         $manual = $pageInfo->manual;
-        $breadcrumbs[] = [
-            'name' => $manual->getTranslation('name', app()->getLocale()),
-            'url' => route('frontend.manual', ['slug' => $manual->url_slug])
-        ];
 
         // Find the menu item that references this page
         $menuItem = $manual->menus()
@@ -238,23 +308,29 @@ class FrontendController extends Controller
             ->first();
 
         if ($menuItem) {
-            // Get all ancestors of this menu item
+            // Get all ancestors of this menu item, ordered by depth (root first)
             $ancestors = $menuItem->ancestors()
-                ->orderBy('depth')
+                ->orderBy('depth', 'asc')
                 ->get();
 
+            // Add ancestors to breadcrumbs
             foreach ($ancestors as $ancestor) {
+                $ancestorLink = null;
+
+                // Only add link if ancestor has a page and click_action is 'page'
+                if ($ancestor->click_action === 'page' && $ancestor->pageInfo) {
+                    $ancestorLink = route('frontend.page', ['slug' => $manual->url_slug, 'id' => $ancestor->pageInfo->id]);
+                }
+
                 $breadcrumbs[] = [
-                    'name' => $ancestor->getTranslation('name', app()->getLocale()),
-                    'url' => $ancestor->click_action === 'page' && $ancestor->pageInfo
-                        ? route('frontend.page', ['id' => $ancestor->pageInfo->id])
-                        : null
+                    'name' => $ancestor->getTranslation('name', $currentLang),
+                    'url' => $ancestorLink
                 ];
             }
 
-            // Add the current menu item
+            // Add the current menu item (no link for current item)
             $breadcrumbs[] = [
-                'name' => $menuItem->getTranslation('name', app()->getLocale()),
+                'name' => $menuItem->getTranslation('name', $currentLang),
                 'url' => null
             ];
         }

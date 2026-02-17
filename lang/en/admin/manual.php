@@ -119,6 +119,7 @@ return [
         'content_required' => 'Content is required',
         'url_required' => 'URL is required when click action is "External"',
         'page_info_required' => 'Page info is required when click action is "Page"',
+        'page_must_have_content' => 'Selected page must have content in at least one language',
         'language_not_supported' => 'Language code is not supported',
         'duplicate_language_content' => 'Content for this language already exists',
         'required_language_missing' => 'Content is required for the following languages: :languages',
@@ -155,4 +156,5 @@ return [
     'none' => 'None',
     'yes' => 'Yes',
     'no' => 'No',
+    'languages' => 'languages',
 ];

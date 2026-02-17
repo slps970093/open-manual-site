@@ -298,17 +298,20 @@ class ManualMenuController extends AdminController
             ->options(function () {
                 $manualId = request('manual_id') ?: (request()->route('manual_menu') ? ManualMenu::find(request()->route('manual_menu'))->manual_id : null);
 
-                // Only show page infos from the same manual
+                // Only show page infos from the same manual that have content
                 if ($manualId) {
-                    $pageInfos = ManualPageInfo::where('manual_id', $manualId)->get();
+                    $pageInfos = ManualPageInfo::where('manual_id', $manualId)
+                        ->whereHas('pageContents') // Only show pages with content
+                        ->get();
                 } else {
-                    $pageInfos = ManualPageInfo::all();
+                    $pageInfos = ManualPageInfo::whereHas('pageContents')->get();
                 }
 
                 $options = ['' => __('admin/manual.none')];
                 foreach ($pageInfos as $pageInfo) {
                     $displayTitle = $pageInfo->getTranslation('title', config('manual.default_language'));
-                    $options[$pageInfo->id] = $displayTitle;
+                    $contentCount = $pageInfo->pageContents()->count();
+                    $options[$pageInfo->id] = $displayTitle . " ({$contentCount} " . __('admin/manual.languages') . ")";
                 }
                 return $options;
             })
@@ -397,6 +400,15 @@ class ManualMenuController extends AdminController
             if ($clickAction === 'page' && empty($pageInfoId)) {
                 admin_error(__('admin/manual.error.create'), __('admin/manual.validation.page_info_required'));
                 return back()->withInput();
+            }
+
+            // Validate that selected page has content
+            if ($clickAction === 'page' && $pageInfoId) {
+                $pageInfo = ManualPageInfo::find($pageInfoId);
+                if (!$pageInfo || !$pageInfo->pageContents()->exists()) {
+                    admin_error(__('admin/manual.error.create'), __('admin/manual.validation.page_must_have_content'));
+                    return back()->withInput();
+                }
             }
 
             // Clear fields based on click_action

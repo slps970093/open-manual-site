@@ -34,6 +34,7 @@ class ManualPageInfoController extends AdminController
             $manualId = request('manual_id');
 
             $pageInfos = ManualPageInfo::where('manual_id', $manualId)
+                ->whereHas('pageContents') // Only return pages with content
                 ->get(['id', 'title'])
                 ->map(function ($pageInfo) {
                     return [

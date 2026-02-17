@@ -2,7 +2,7 @@
 
 <div class="d-flex align-items-center gap-2">
     <span class="text-muted small">語言:</span>
-    <select class="form-select form-select-{{ $size }}" id="{{ $id }}" style="width: auto;" aria-label="選擇語言">
+    <select class="form-select form-select-{{ $size }} language-selector" id="{{ $id }}" style="width: auto;" aria-label="選擇語言">
         <option value="zh-TW" {{ app()->getLocale() === 'zh-TW' ? 'selected' : '' }}>繁體中文</option>
         <option value="en" {{ app()->getLocale() === 'en' ? 'selected' : '' }}>English</option>
         <option value="zh-CN" {{ app()->getLocale() === 'zh-CN' ? 'selected' : '' }}>简体中文</option>
@@ -19,17 +19,18 @@
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const languageSelector = document.getElementById('{{ $id }}');
+    // 為所有語言選擇器添加事件監聽器
+    const languageSelectors = document.querySelectorAll('.language-selector');
 
-    if (languageSelector) {
+    languageSelectors.forEach(selector => {
         // 從 localStorage 恢復語言偏好
         const savedLanguage = localStorage.getItem('preferredLanguage');
         if (savedLanguage) {
-            languageSelector.value = savedLanguage;
+            selector.value = savedLanguage;
         }
 
         // 語言選擇器變更事件
-        languageSelector.addEventListener('change', function() {
+        selector.addEventListener('change', function() {
             const selectedLanguage = this.value;
             localStorage.setItem('preferredLanguage', selectedLanguage);
 
@@ -38,7 +39,7 @@ document.addEventListener('DOMContentLoaded', function() {
             url.searchParams.set('lang', selectedLanguage);
             window.location.href = url.toString();
         });
-    }
+    });
 });
 </script>
 @endpush

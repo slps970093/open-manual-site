@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ $manual->getTranslation('name', app()->getLocale()) }} - Docs</title>
+    <title>{{ $pageInfo->getTranslation('title', app()->getLocale()) }} - {{ $manual->getTranslation('name', app()->getLocale()) }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -16,7 +16,7 @@
 <body>
 <!-- 文檔詳情頁 -->
 <div class="d-flex" style="min-height: 100vh;">
-<!-- 側邊欄 -->
+    <!-- 側邊欄 -->
     <nav class="sidebar bg-light-gray d-none d-md-block" id="desktopSidebar" style="width: 280px; overflow-y: auto;">
         <div class="p-3 border-bottom" style="background-color: var(--primary-color);">
             <h5 class="fw-bold text-white mb-0">{{ $manual->getTranslation('name', app()->getLocale()) }}</h5>
@@ -26,7 +26,7 @@
         </div>
         <nav class="menu-tree nav flex-column" id="menuTree" role="tree">
             @forelse($menus as $menu)
-                @include('frontend.partials.menu-item', ['item' => $menu, 'level' => 0, 'currentLang' => $currentLang, 'currentPageId' => $currentPageId, 'manualSlug' => $manual->url_slug])
+                @include('frontend.partials.menu-item', ['item' => $menu, 'level' => 0, 'currentLang' => $currentLang, 'currentPageId' => $id, 'manualSlug' => $manual->url_slug])
             @empty
                 <div class="text-center text-muted py-3">
                     <p class="mb-0">暫無菜單項</p>
@@ -45,7 +45,7 @@
                     <x-breadcrumb :breadcrumbs="$breadcrumbs" :manualSlug="$manual->url_slug" :simplified="false" />
                 </div>
                 <div class="d-flex align-items-center gap-2">
-                    <a href="{{ route('frontend.manuals') }}" class="btn btn-sm btn-light">← 清單</a>
+                    <a href="{{ route('frontend.manual', ['slug' => $manual->url_slug]) }}" class="btn btn-sm btn-light">← 清單</a>
                     <x-language-selector id="languageSelector" size="sm" />
                 </div>
             </div>
@@ -53,13 +53,31 @@
 
         <!-- 內容區 -->
         <div class="flex-grow-1 overflow-y-auto p-4 p-md-5 bg-light" id="contentArea">
-            <div class="manual-empty-state" id="emptyState">
-                <div class="manual-empty-state-icon">
-                    <i class="fas fa-book-open"></i>
+            <article class="manual-page-content">
+                <!-- Page Title -->
+                <h1 class="mb-3">{{ $pageInfo->getTranslation('title', $currentLang) }}</h1>
+
+                <!-- Page Metadata -->
+                <div class="page-metadata mb-4 pb-3 border-bottom" style="font-size: 0.9rem; color: var(--text-light);">
+                    @if($processedContent && $processedContent->created_at)
+                        <span class="me-3">
+                            <i class="fas fa-calendar-alt"></i>
+                            建立: {{ $processedContent->created_at->format('Y-m-d') }}
+                        </span>
+                    @endif
+                    @if($processedContent && $processedContent->updated_at && $processedContent->updated_at !== $processedContent->created_at)
+                        <span>
+                            <i class="fas fa-sync-alt"></i>
+                            更新: {{ $processedContent->updated_at->format('Y-m-d') }}
+                        </span>
+                    @endif
                 </div>
-                <h3 class="manual-empty-state-title">選擇一個頁面開始</h3>
-                <p class="mb-0">從左側菜單中選擇一個頁面來查看其內容</p>
-            </div>
+
+                <!-- Page Content -->
+                <div class="page-body" style="line-height: 1.8; color: var(--text-dark);">
+                    {!! $processedContent->content !!}
+                </div>
+            </article>
         </div>
     </div>
 </div>
@@ -68,9 +86,14 @@
 <div class="d-md-none position-fixed top-0 start-0 w-100 border-bottom p-3 z-3 bg-light-gray">
     <div class="d-flex justify-content-between align-items-center gap-2">
         <button class="btn btn-sm" id="mobileMenuBtn" style="background: none; border: none; font-size: 1.5rem; z-index: 1001; color: var(--text-dark); padding: 0;">☰</button>
-        <span class="fw-bold flex-grow-1 text-center">{{ $manual->getTranslation('name', app()->getLocale()) }}</span>
+        <span class="fw-bold flex-grow-1 text-center" style="font-size: 0.9rem;">{{ $manual->getTranslation('name', app()->getLocale()) }}</span>
         <x-language-selector id="mobileLanguageSelector" size="sm" />
     </div>
+</div>
+
+<!-- 手機版麵包屑導航 -->
+<div class="d-md-none position-fixed top-0 start-0 w-100 border-bottom p-2 z-2 bg-light-gray" style="margin-top: 3.5rem;">
+    <x-breadcrumb :breadcrumbs="$breadcrumbs" :manualSlug="$manual->url_slug" :simplified="true" />
 </div>
 
 <!-- 手機版側邊欄 -->
@@ -83,7 +106,7 @@
     </div>
     <nav class="menu-tree nav flex-column" id="mobileMenuTree" role="tree">
         @forelse($menus as $menu)
-            @include('frontend.partials.menu-item', ['item' => $menu, 'level' => 0, 'currentLang' => $currentLang, 'currentPageId' => $currentPageId, 'manualSlug' => $manual->url_slug])
+            @include('frontend.partials.menu-item', ['item' => $menu, 'level' => 0, 'currentLang' => $currentLang, 'currentPageId' => $id, 'manualSlug' => $manual->url_slug])
         @empty
             <div class="text-center text-muted py-3">
                 <p class="mb-0">暫無菜單項</p>
@@ -186,32 +209,93 @@
         padding-left: 4rem;
     }
 
-    .manual-empty-state {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        min-height: 400px;
-        text-align: center;
-        color: var(--text-muted);
+    .manual-page-content {
+        max-width: 900px;
     }
 
-    .manual-empty-state-icon {
-        font-size: 3rem;
-        margin-bottom: 1rem;
-        opacity: 0.5;
+    .page-metadata {
+        font-size: 0.9rem;
+        color: var(--text-light);
     }
 
-    .manual-empty-state-title {
-        font-size: 1.25rem;
-        font-weight: 600;
-        margin-bottom: 0.5rem;
+    .page-body {
+        line-height: 1.8;
         color: var(--text-dark);
+    }
+
+    .page-body h2 {
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+        font-weight: 600;
+        color: var(--text-dark);
+    }
+
+    .page-body h3 {
+        margin-top: 1.5rem;
+        margin-bottom: 0.75rem;
+        font-weight: 600;
+        color: var(--text-dark);
+    }
+
+    .page-body p {
+        margin-bottom: 1rem;
+    }
+
+    .page-body code {
+        background-color: var(--bg-light-card);
+        padding: 0.2rem 0.4rem;
+        border-radius: 3px;
+        font-family: 'Courier New', monospace;
+        font-size: 0.9em;
+        color: var(--primary-color);
+    }
+
+    .page-body pre {
+        background-color: var(--bg-light-card);
+        padding: 1rem;
+        border-radius: 5px;
+        overflow-x: auto;
+        margin-bottom: 1rem;
+    }
+
+    .page-body pre code {
+        background-color: transparent;
+        padding: 0;
+        color: var(--text-dark);
+    }
+
+    .page-body table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1rem;
+    }
+
+    .page-body table th,
+    .page-body table td {
+        border: 1px solid var(--border-color);
+        padding: 0.75rem;
+        text-align: left;
+    }
+
+    .page-body table th {
+        background-color: var(--bg-light-card);
+        font-weight: 600;
+    }
+
+    .page-body img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 5px;
+        margin: 1rem 0;
     }
 
     @media (max-width: 767.98px) {
         #contentArea {
-            margin-top: 3.5rem;
+            margin-top: 6.5rem;
+        }
+
+        .manual-page-content {
+            max-width: 100%;
         }
     }
 </style>
