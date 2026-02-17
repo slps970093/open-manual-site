@@ -15,31 +15,3 @@
         <option value="ar" {{ app()->getLocale() === 'ar' ? 'selected' : '' }}>العربية</option>
     </select>
 </div>
-
-@push('scripts')
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // 為所有語言選擇器添加事件監聽器
-    const languageSelectors = document.querySelectorAll('.language-selector');
-
-    languageSelectors.forEach(selector => {
-        // 從 localStorage 恢復語言偏好
-        const savedLanguage = localStorage.getItem('preferredLanguage');
-        if (savedLanguage) {
-            selector.value = savedLanguage;
-        }
-
-        // 語言選擇器變更事件
-        selector.addEventListener('change', function() {
-            const selectedLanguage = this.value;
-            localStorage.setItem('preferredLanguage', selectedLanguage);
-
-            // 重新加載頁面以應用語言變更
-            const url = new URL(window.location);
-            url.searchParams.set('lang', selectedLanguage);
-            window.location.href = url.toString();
-        });
-    });
-});
-</script>
-@endpush

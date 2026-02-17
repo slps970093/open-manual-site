@@ -5,31 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>技術文檔 - Docs</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
-    <link rel="stylesheet" href="styles.css">
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-        }
-        .navbar {
-            padding: 0.5rem 1rem !important;
-        }
-        .navbar-brand {
-            padding: 0 !important;
-            margin: 0 !important;
-        }
-        .navbar-toggler {
-            padding: 0.25rem 0.5rem !important;
-        }
-        .content-wrapper {
-            padding: 2rem 1rem;
-        }
-        @media (min-width: 768px) {
-            .content-wrapper {
-                padding: 3rem 2rem;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <!-- 文檔清單頁 -->
@@ -88,64 +64,5 @@
             </div>
         </div>
     </div>
-
-    <script src="//cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
-    @stack('scripts')
-
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const searchInput = document.getElementById('searchInput');
-            const manualGrid = document.getElementById('manualGrid');
-            const emptySearchState = document.getElementById('emptySearchState');
-            const manualCards = document.querySelectorAll('.manual-card-wrapper');
-
-            // 搜尋功能
-            searchInput.addEventListener('input', function() {
-                const searchTerm = this.value.toLowerCase();
-                let visibleCount = 0;
-
-                manualCards.forEach(card => {
-                    const title = card.querySelector('.card-title').textContent.toLowerCase();
-                    const description = card.querySelector('.card-text').textContent.toLowerCase();
-
-                    if (title.includes(searchTerm) || description.includes(searchTerm)) {
-                        card.style.display = '';
-                        visibleCount++;
-                    } else {
-                        card.style.display = 'none';
-                    }
-                });
-
-                // 顯示/隱藏空狀態
-                if (visibleCount === 0 && searchTerm.length > 0) {
-                    manualGrid.style.display = 'none';
-                    emptySearchState.style.display = 'block';
-                } else {
-                    manualGrid.style.display = 'grid';
-                    emptySearchState.style.display = 'none';
-                }
-
-                // 更新 URL 搜尋參數
-                if (searchTerm) {
-                    const url = new URL(window.location);
-                    url.searchParams.set('q', searchTerm);
-                    window.history.replaceState({}, '', url);
-                } else {
-                    const url = new URL(window.location);
-                    url.searchParams.delete('q');
-                    window.history.replaceState({}, '', url);
-                }
-            });
-
-            // 從 URL 恢復搜尋查詢
-            const urlParams = new URLSearchParams(window.location.search);
-            const searchQuery = urlParams.get('q');
-            if (searchQuery) {
-                searchInput.value = searchQuery;
-                searchInput.dispatchEvent(new Event('input'));
-            }
-        });
-    </script>
 </body>
 </html>

@@ -9,8 +9,9 @@
 ### 技術棧
 
 - **前端框架**: Laravel Blade 模板引擎
-- **CSS 框架**: Bootstrap 5
+- **CSS 框架**: Bootstrap 5（通過 Vite 集成）
 - **JavaScript**: Vanilla JavaScript（無框架依賴）
+- **構建工具**: Vite（模塊化 JavaScript 管理）
 - **後端集成**: Laravel 路由和控制器
 - **多語言**: Spatie Translatable（已在 Manual 模型中實現）
 - **樹狀結構**: ClosureTable（已在 ManualMenu 模型中實現）
@@ -39,9 +40,10 @@ FrontendController 加載手冊詳情頁
 ```
 ManualDetailPage
 ├── Head
-│   ├── @vite CSS/JS
+│   ├── @vite CSS (resources/css/app.css, resources/css/manuals.css)
+│   ├── @vite JS (resources/js/manual.js)
 │   ├── Font Awesome Icons
-│   └── Inline Styles
+│   └── Meta Tags
 ├── Body
 │   ├── Desktop Layout (Flex)
 │   │   ├── Sidebar (d-none d-md-block)
@@ -54,27 +56,30 @@ ManualDetailPage
 │   │   │           ├── External Link Icon
 │   │   │           └── Child Menu Items
 │   │   └── Main Content Area
-│   │       ├── Top Navigation Bar
-│   │       │   ├── Breadcrumb Navigation
+│   │       ├── Top Navigation Bar (d-none d-md-block)
+│   │       │   ├── Breadcrumb Navigation (flex-grow-1)
 │   │       │   ├── Back to List Button
 │   │       │   └── Language Selector (x-language-selector)
 │   │       └── Content Area
 │   │           ├── Page Title
 │   │           ├── Page Metadata
 │   │           └── Page Content (HTML)
-│   ├── Mobile Header (d-md-none)
-│   │   ├── Menu Toggle Button
-│   │   ├── Manual Title
-│   │   └── Language Selector (x-language-selector)
-│   └── Mobile Sidebar (d-md-none)
-│       ├── Header (Primary Color Background)
+│   ├── Mobile Header (d-md-none, position-fixed, top-0)
+│   │   ├── Row 1: Menu Button | Title (centered) | Back Button
+│   │   │   ├── Menu Toggle Button (☰)
+│   │   │   ├── Manual/Page Title (flex-grow-1, text-center, ellipsis)
+│   │   │   └── Back to List Button (← 清單)
+│   │   └── Row 2: Language Selector (full width)
+│   │       └── Language Selector (x-language-selector)
+│   └── Mobile Sidebar (d-md-none, position-fixed, start-0, top-0)
+│       ├── Header (Primary Color Background, margin-top: 3.5rem)
 │       ├── Menu Search Input
 │       └── Menu Tree (same as desktop)
 └── Scripts
-    ├── Menu Toggle Logic
-    ├── Menu Search Logic
-    ├── Menu Item Click Handlers
-    └── Bootstrap Bundle
+    └── Vite Bundle (resources/js/manual.js)
+        ├── Bootstrap Module
+        ├── Language Switcher Module
+        └── Menu Manager Module
 ```
 
 ## 組件和介面
@@ -205,6 +210,349 @@ ManualDetailPage
 - 使用 Bootstrap 的 d-none d-md-block 類
 - 使用 CSS transform 和 transition 實現平滑動畫
 - 使用 JavaScript 處理點擊事件
+
+## JavaScript 架構
+
+### Vite 構建系統
+
+該項目使用 Vite 作為前端構建工具，管理 CSS 和 JavaScript 資源。
+
+**Vite 配置** (`vite.config.js`):
+```javascript
+export default defineConfig({
+    plugins: [
+        laravel({
+            input: [
+                'resources/css/app.css',
+                'resources/js/app.js',      // 首頁專用
+                'resources/js/manual.js',   // 手冊/頁面專用
+            ],
+            refresh: true,
+        }),
+    ],
+});
+```
+
+### 模塊化 JavaScript 結構
+
+所有 JavaScript 代碼被組織成模塊化文件，通過 Vite 進行管理和打包。
+
+#### 1. 入口點
+
+**`resources/js/app.js`** - 首頁專用
+```javascript
+import './bootstrap';
+import * as bootstrap from 'bootstrap';
+import { initSearchManager } from './search-manager';
+
+document.addEventListener('DOMContentLoaded', function() {
+    initSearchManager(
+        '#searchInput',
+        '#manualGrid',
+        '#emptySearchState'
+    );
+});
+```
+
+**`resources/js/manual.js`** - 手冊/頁面詳情專用
+```javascript
+import './bootstrap';
+import * as bootstrap from 'bootstrap';
+import { initLanguageSwitcher } from './language-switcher';
+import { initMenuManager } from './menu-manager';
+
+document.addEventListener('DOMContentLoaded', function() {
+    initLanguageSwitcher();
+    
+    initMenuManager(
+        '#menuTree',
+        '#menuSearchInput',
+        '#mobileMenuBtn',
+        '#mobileSidebar'
+    );
+    
+    initMenuManager(
+        '#mobileMenuTree',
+        '#mobileMenuSearchInput',
+        null,
+        null
+    );
+});
+```
+
+#### 2. 共享模塊
+
+**`resources/js/bootstrap.js`** - Bootstrap 和全局配置
+- 導入 Bootstrap CSS 和 JavaScript
+- 設置全局配置
+- 所有入口點都導入此模塊
+
+**`resources/js/language-switcher.js`** - 語言切換功能
+- 導出 `initLanguageSwitcher()` 函數
+- 監聽語言選擇器變更事件
+- 更新 localStorage 並重新加載頁面
+
+**`resources/js/menu-manager.js`** - 菜單管理功能
+- 導出 `initMenuManager(menuSelector, searchSelector, mobileBtn, mobileSidebar)` 函數
+- 處理菜單展開/摺疊
+- 實現菜單搜尋功能
+- 管理 localStorage 中的展開狀態
+
+**`resources/js/search-manager.js`** - 搜尋功能（首頁）
+- 導出 `initSearchManager(searchSelector, gridSelector, emptyStateSelector)` 函數
+- 實現手冊卡片搜尋功能
+
+### 視圖集成
+
+#### 首頁 (`resources/views/frontend/index.blade.php`)
+```blade
+@vite(['resources/css/app.css', 'resources/js/app.js'])
+```
+
+#### 手冊詳情頁 (`resources/views/frontend/manual.blade.php`)
+```blade
+@vite(['resources/css/app.css', 'resources/css/manuals.css', 'resources/js/manual.js'])
+```
+
+#### 頁面詳情頁 (`resources/views/frontend/page.blade.php`)
+```blade
+@vite(['resources/css/app.css', 'resources/css/manuals.css', 'resources/js/manual.js'])
+```
+
+### 構建和開發
+
+**開發模式**:
+```bash
+npm run dev
+```
+- Vite 開發服務器運行在 http://localhost:5173
+- 自動熱模塊替換 (HMR)
+- 源代碼映射用於調試
+
+**生產構建**:
+```bash
+npm run build
+```
+- 生成優化的生產包
+- 代碼最小化和樹搖動
+- 資源哈希用於緩存破壞
+- 輸出到 `public/build/` 目錄
+
+### 優勢
+
+1. **模塊化**: 代碼被組織成可重用的模塊
+2. **性能**: Vite 提供快速的開發體驗和優化的生產構建
+3. **可維護性**: 清晰的文件結構和職責分離
+4. **無 CDN 依賴**: Bootstrap 通過 npm 管理，不依賴外部 CDN
+5. **一致性**: 所有 JavaScript 通過統一的構建系統管理
+
+## CSS 架構
+
+### 文件組織
+
+CSS 被分為兩個主要文件，通過 Vite 進行管理：
+
+**`resources/css/app.css`** - 全局樣式
+- Bootstrap 5 導入
+- CSS 變量定義（顏色、間距、排版）
+- 全局組件樣式（導航欄、卡片、表單、按鈕）
+- 響應式設計基礎
+- 深色模式支持
+
+**`resources/css/manuals.css`** - 手冊/頁面詳情專用
+- 菜單樹樣式（展開/摺疊、活動狀態、懸停效果）
+- 空狀態樣式
+- 頁面內容樣式（標題、代碼塊、表格、圖像）
+- 頁面元數據樣式
+- 麵包屑導航樣式
+- 移動響應式調整
+- 深色模式支持
+
+### 移動響應式設計
+
+#### 桌面佈局 (≥768px)
+- 側邊欄始終顯示（寬度 280px）
+- 頂部導航欄顯示麵包屑、返回按鈕、語言選擇器
+- 主內容區佔據剩餘空間
+- 使用 `d-none d-md-block` 類控制可見性
+
+#### 移動佈局 (<768px)
+- 側邊欄隱藏，使用漢堡菜單按鈕切換
+- 頂部導航欄分為兩行：
+  - **第一行**: 菜單按鈕 | 標題（居中） | 返回按鈕
+    - 使用 `justify-content-between` 分佈
+    - 標題使用 `flex-grow-1` 佔據中間空間
+    - 標題使用 `text-overflow: ellipsis` 處理長文本
+    - 按鈕使用 `flex-shrink: 0` 防止壓縮
+  - **第二行**: 語言選擇器（全寬）
+    - 使用 `px-2 pb-2` 提供邊距
+- 內容區頂部邊距調整為 `6rem` 以適應固定頭部
+- 使用 `position-fixed` 和 `z-index` 管理層級
+
+#### 移動側邊欄動畫
+- 使用 `transform: translateX(-100%)` 隱藏側邊欄
+- 使用 `transition: transform 0.3s ease` 提供平滑動畫
+- 點擊菜單按鈕時切換 `translateX(0)`
+- 使用 `z-index: 999` 確保在內容上方
+
+### Vite 配置
+
+```javascript
+export default defineConfig({
+    plugins: [
+        laravel({
+            input: [
+                'resources/css/app.css',      // 全局樣式
+                'resources/css/manuals.css',  // 手冊頁面專用
+                'resources/js/app.js',        // 首頁 JS
+                'resources/js/manual.js',     // 手冊頁面 JS
+            ],
+            refresh: true,
+        }),
+    ],
+});
+```
+
+### CSS 變量
+
+所有顏色和設計令牌都定義為 CSS 變量，便於維護和主題化：
+
+```css
+:root {
+    --primary-color: #2563EB;
+    --bg-light: #E2E8F0;
+    --bg-light-gray: #F1F5F9;
+    --bg-light-card: #F8FAFC;
+    --text-dark: #1E293B;
+    --text-muted: #64748B;
+    --text-light: #94A3B8;
+    --border-color: #E2E8F0;
+}
+```
+
+### 優勢
+
+1. **分離關注點**: 全局樣式和頁面特定樣式分開管理
+2. **可重用性**: 全局樣式在所有頁面中使用
+3. **性能**: 只加載必要的 CSS
+4. **可維護性**: 清晰的文件結構便於修改
+5. **主題化**: CSS 變量支持輕鬆的主題切換
+6. **移動優先**: 清晰的移動響應式設計，簡化的兩行頭部佈局
+
+## 移動頭部佈局設計
+
+### 概述
+
+移動版本採用簡化的兩行頭部設計，優化了小屏幕空間利用。
+
+### 第一行：導航欄
+
+**結構**:
+```
+[☰ Menu] [Title (centered)] [← Back]
+```
+
+**組件**:
+- **菜單按鈕** (左側)
+  - 按鈕樣式: `btn btn-sm`
+  - 背景: 無 (`background: none`)
+  - 邊框: 無 (`border: none`)
+  - 字體大小: `1.5rem`
+  - Z-index: `1001`
+  - 顏色: `var(--text-dark)`
+  - 內邊距: `0`
+  - 縮放: `flex-shrink: 0`
+  - 功能: 點擊時切換側邊欄可見性
+
+- **標題** (中間)
+  - 容器: `span.fw-bold.text-center`
+  - 字體大小: `0.85rem`
+  - 寬度: `flex-grow-1`
+  - 溢出處理: `text-overflow: ellipsis`
+  - 空白: `white-space: nowrap`
+  - 內容: 手冊名稱或頁面標題
+
+- **返回按鈕** (右側)
+  - 按鈕樣式: `btn btn-sm btn-light`
+  - 文本: `← 清單`
+  - 空白: `white-space: nowrap`
+  - 縮放: `flex-shrink: 0`
+  - 功能: 導航回手冊列表或首頁
+
+**佈局**:
+- 容器: `d-flex justify-content-between align-items-center`
+- 間距: `gap-2`
+- 內邊距: `p-2`
+- 位置: `position-fixed top-0 start-0 w-100`
+- Z-index: `z-3`
+- 背景: `bg-light-gray`
+- 邊框: `border-bottom`
+
+### 第二行：語言選擇器
+
+**結構**:
+```
+[Language Selector (full width)]
+```
+
+**組件**:
+- **語言選擇器** (全寬)
+  - 組件: `<x-language-selector>`
+  - ID: `mobileLanguageSelector`
+  - 大小: `sm`
+  - 容器內邊距: `px-2 pb-2`
+  - 功能: 允許用戶選擇語言並重新加載頁面
+
+**佈局**:
+- 容器: `div`
+- 內邊距: `px-2 pb-2`
+- 寬度: `100%`
+
+### 側邊欄
+
+**位置和尺寸**:
+- 位置: `position-fixed start-0 top-0 h-100`
+- 寬度: `280px`
+- Z-index: `999`
+- 背景: `bg-light-gray`
+- 溢出: `overflow-y: auto`
+
+**動畫**:
+- 默認狀態: `transform: translateX(-100%)`
+- 打開狀態: `transform: translateX(0)`
+- 過渡: `transition: transform 0.3s ease`
+
+**內容**:
+- 頭部: 手冊名稱（背景色為主色）
+- 搜尋框: 菜單搜尋輸入
+- 菜單樹: 與桌面版相同的菜單結構
+
+**頭部邊距**:
+- 頭部上邊距: `margin-top: 3.5rem`
+- 原因: 避免與固定頂部導航重疊
+
+### 內容區調整
+
+**移動版內容區**:
+- 頂部邊距: `margin-top: 6rem`
+- 原因: 為固定頭部（第一行 ~3.5rem + 第二行 ~2.5rem）預留空間
+- 內邊距: `p-4`
+- 背景: `bg-light`
+- 溢出: `overflow-y: auto`
+
+### 響應式斷點
+
+- **桌面** (≥768px): 側邊欄始終顯示，頂部導航欄顯示麵包屑
+- **平板** (768px-1023px): 側邊欄始終顯示，頂部導航欄顯示麵包屑
+- **手機** (<768px): 側邊欄隱藏，使用漢堡菜單切換，簡化頭部佈局
+
+### 設計優勢
+
+1. **空間利用**: 兩行設計最大化利用有限的移動屏幕空間
+2. **清晰性**: 菜單、標題、返回按鈕清晰分離
+3. **可用性**: 大按鈕易於點擊，標題居中便於識別
+4. **一致性**: 與桌面版共享相同的菜單和語言選擇器邏輯
+5. **性能**: 使用 CSS transform 實現平滑動畫，無性能損耗
 
 ## 資料模型
 
@@ -714,8 +1062,8 @@ ManualDetailPage
    - 考慮虛擬化大型菜單樹
 
 3. **資源加載**:
-   - 最小化 CSS 和 JavaScript
-   - 使用 CDN 提供靜態資源
+   - 最小化 CSS 和 JavaScript（由 Vite 自動處理）
+   - 使用 Vite 的資源哈希進行緩存破壞
    - 考慮延遲加載圖像
 
 ### 瀏覽器兼容性
