@@ -7,6 +7,7 @@ use App\Models\Manual;
 use App\Models\ManualPageContent;
 use App\Admin\Helpers\TranslatableFormHelper;
 use Ladmin\Controllers\AdminController;
+use Ladmin\Facades\Admin;
 use Ladmin\Form;
 use Ladmin\Grid;
 use Ladmin\Show;
@@ -29,6 +30,7 @@ class ManualPageInfoController extends AdminController
      */
     public function index(Content $content)
     {
+        Admin::disablePjax();
         // Handle AJAX request for page infos by manual_id (only if it's an actual AJAX request)
         if (request()->header('Accept') === 'application/json' && request('manual_id')) {
             $manualId = request('manual_id');
@@ -53,7 +55,8 @@ class ManualPageInfoController extends AdminController
                 ['text' => __('admin.home'), 'url' => admin_url('/')],
                 ['text' => __('admin/manual.page_info.title')]
             )
-            ->body($this->grid());
+            ->body($this->grid())
+            ->body('<script>$(document).ready(function(){$("#pjax-container").removeAttr("data-pjax-container");});</script>');
     }
 
     /**
@@ -92,7 +95,7 @@ class ManualPageInfoController extends AdminController
                 ['text' => __('admin/manual.page_info.title'), 'url' => admin_url('manual-page-infos')],
                 ['text' => __('admin.edit')]
             )
-            ->body($this->form()->edit($id));
+            ->body($this->form(ManualPageInfo::findOrFail($id))->edit($id));
     }
 
     /**
@@ -103,6 +106,7 @@ class ManualPageInfoController extends AdminController
     protected function grid()
     {
         $grid = new Grid(new ManualPageInfo());
+
 
         $grid->column('id', __('ID'))->sortable();
 
@@ -175,9 +179,10 @@ class ManualPageInfoController extends AdminController
      *
      * @return Form
      */
-    protected function form()
+    protected function form($model = null)
     {
-        $form = new Form(new ManualPageInfo());
+        $model = $model ?? new ManualPageInfo();
+        $form = new Form($model);
 
         // Manual selection
         $form->select('manual_id', __('admin/manual.page_info.manual'))
@@ -190,18 +195,11 @@ class ManualPageInfoController extends AdminController
             ->rules('required')
             ->help(__('admin/manual.page_info.help_manual'));
 
-        // Add translatable title fields using helper
-        TranslatableFormHelper::addTranslatableText($form, 'title', __('admin/manual.page_info.page_title'), [
-            'help' => __('admin/manual.page_info.help_title'),
-        ]);
-
-        // Add translatable keyword fields using helper
-        TranslatableFormHelper::addTranslatableText($form, 'keyword', __('admin/manual.page_info.keyword'), [
-            'help' => __('admin/manual.page_info.help_keyword'),
-        ]);
+        // All translatable fields in one tab group (title + keyword + content per language)
+        $form->html($this->renderUnifiedLanguageTabs($model));
 
         // Add page content editor tabs
-        $form->html($this->renderPageContentTabs());
+        // $form->html($this->renderPageContentTabs()); // replaced by unified tabs above
 
         // Custom validation and data transformation
         $form->saving(function (Form $form) {
@@ -263,124 +261,141 @@ class ManualPageInfoController extends AdminController
     }
 
     /**
-     * Render page content tabs for multi-language editing.
-     *
-     * @return string
+     * Render a single tab group with title, keyword, and rich-text content per language.
      */
-    protected function renderPageContentTabs()
-    {
-        $supportedLanguages = config('manual.supported_languages', []);
-        $pageInfoId = request()->route('manual_page_info');
-        $pageInfo = null;
+    protected function renderUnifiedLanguageTabs(ManualPageInfo $model = null): string
+        {
+            $supportedLanguages = config('manual.supported_languages', []);
+            $requiredLanguages  = config('manual.required_languages', []);
+            $uid = 'page-info-tabs-' . uniqid();
 
-        if ($pageInfoId) {
-            $pageInfo = ManualPageInfo::find($pageInfoId);
-        }
+            $titleValues   = $model && $model->exists ? ($model->getTranslations('title')   ?: []) : [];
+            $keywordValues = $model && $model->exists ? ($model->getTranslations('keyword') ?: []) : [];
 
-        $html = '<div class="form-group">';
-        $html .= '<label class="control-label">' . __('admin/manual.page_content.content') . '</label>';
-        $html .= '<div class="nav-tabs-custom">';
-        $html .= '<ul class="nav nav-tabs">';
-
-        $first = true;
-        foreach ($supportedLanguages as $langCode => $langName) {
-            $active = $first ? 'active' : '';
-            $html .= '<li class="' . $active . '"><a href="#content-' . $langCode . '" data-toggle="tab">' . $langName . '</a></li>';
-            $first = false;
-        }
-
-        $html .= '</ul>';
-        $html .= '<div class="tab-content">';
-
-        $first = true;
-        foreach ($supportedLanguages as $langCode => $langName) {
-            $active = $first ? 'active' : '';
-            $html .= '<div class="tab-pane ' . $active . '" id="content-' . $langCode . '">';
-
-            if ($pageInfo) {
-                $pageContent = $pageInfo->pageContents()->where('lang', $langCode)->first();
-                $content = $pageContent ? $pageContent->content : '';
-                $contentId = $pageContent ? $pageContent->id : null;
-
-                $html .= '<input type="hidden" name="page_content_ids[' . $langCode . ']" value="' . ($contentId ?: '') . '">';
-                $html .= '<textarea id="page_content_' . $langCode . '" name="page_contents[' . $langCode . ']" class="hugerte-editor">' . htmlspecialchars($content) . '</textarea>';
-            } else {
-                $html .= '<textarea id="page_content_' . $langCode . '" name="page_contents[' . $langCode . ']" class="hugerte-editor"></textarea>';
+            $contentMap = [];
+            $contentIdMap = [];
+            if ($model && $model->exists) {
+                foreach ($model->pageContents as $pc) {
+                    $contentMap[$pc->lang]   = $pc->content;
+                    $contentIdMap[$pc->lang] = $pc->id;
+                }
             }
 
-            $html .= '</div>';
-            $first = false;
-        }
+            $html  = '<div class="form-group">';
+            $html .= '<div class="col-md-10 col-md-offset-1">';
+            $html .= '<div class="nav-tabs-custom">';
+            $html .= '<ul class="nav nav-tabs">';
 
-        $html .= '</div>';
-        $html .= '</div>';
-        $html .= '</div>';
+            $first = true;
+            foreach ($supportedLanguages as $langCode => $langName) {
+                $isRequired  = in_array($langCode, $requiredLanguages);
+                $activeClass = $first ? 'active' : '';
+                $badge       = $isRequired
+                    ? ' <span class="label label-danger" style="font-size:10px">Required</span>'
+                    : '';
+                $html .= '<li class="' . $activeClass . '">';
+                $html .= '<a href="#' . $uid . '-' . $langCode . '" data-toggle="tab">' . e($langName) . $badge . '</a>';
+                $html .= '</li>';
+                $first = false;
+            }
 
-        // Add HugerTE initialization script with file manager integration
-        $html .= '<script>
+            $html .= '</ul>';
+            $html .= '<div class="tab-content" style="padding:15px">';
+
+            $first = true;
+            foreach ($supportedLanguages as $langCode => $langName) {
+                $isRequired  = in_array($langCode, $requiredLanguages);
+                $activeClass = $first ? 'active' : '';
+                $reqAttr     = $isRequired ? ' required' : '';
+
+                $titleVal   = e($titleValues[$langCode]   ?? '');
+                $keywordVal = e($keywordValues[$langCode] ?? '');
+                $contentVal = htmlspecialchars($contentMap[$langCode] ?? '');
+                $contentId  = $contentIdMap[$langCode] ?? '';
+
+                $html .= '<div class="tab-pane ' . $activeClass . '" id="' . $uid . '-' . $langCode . '">';
+
+                $html .= '<div class="form-group" style="margin-bottom:12px">';
+                $html .= '<label>' . e(__('admin/manual.page_info.page_title')) . '</label>';
+                $html .= '<input type="text" name="title[' . $langCode . ']" class="form-control" value="' . $titleVal . '"' . $reqAttr . '>';
+                $html .= '</div>';
+
+                $html .= '<div class="form-group" style="margin-bottom:12px">';
+                $html .= '<label>' . e(__('admin/manual.page_info.keyword')) . '</label>';
+                $html .= '<input type="text" name="keyword[' . $langCode . ']" class="form-control" value="' . $keywordVal . '">';
+                $html .= '</div>';
+
+                $html .= '<div class="form-group" style="margin-bottom:0">';
+                $html .= '<label>' . e(__('admin/manual.page_content.content')) . '</label>';
+                $html .= '<input type="hidden" name="page_content_ids[' . $langCode . ']" value="' . e($contentId) . '">';
+                $html .= '<textarea id="page_content_' . $langCode . '" name="page_contents[' . $langCode . ']" class="hugerte-editor">' . $contentVal . '</textarea>';
+                $html .= '</div>';
+
+                $html .= '</div>'; // .tab-pane
+                $first = false;
+            }
+
+            $html .= '</div>'; // .tab-content
+            $html .= '</div>'; // .nav-tabs-custom
+            $html .= '</div>'; // .col
+            $html .= '</div>'; // .form-group
+
+            $html .= '<script>
             $(document).ready(function() {
-                // Initialize HugerTE for all textareas with hugerte-editor class
+                // Disable pjax on this page — hugerte needs a real full-page load
+                $("#pjax-container").removeAttr("data-pjax-container");
+
                 hugerte.init({
                     selector: ".hugerte-editor",
                     height: 400,
                     plugins: "image link table lists code",
                     toolbar: "undo redo | formatselect | bold italic underline strikethrough | alignleft aligncenter alignright alignjustify | bullist numlist outdent indent | link image table | code",
                     file_picker_callback: function(callback, value, meta) {
-                        if (meta.filetype === "image") {
-                            window.open("/laravel-filemanager?type=Images", "fm", "width=900,height=600");
-                            window.SetUrl = function(items) {
-                                var file_path = items.map(function(x) { return x.url; }).join(",");
-                                callback(file_path, { alt: "" });
-                            };
-                        } else if (meta.filetype === "file") {
-                            window.open("/laravel-filemanager?type=Files", "fm", "width=900,height=600");
-                            window.SetUrl = function(items) {
-                                var file_path = items.map(function(x) { return x.url; }).join(",");
-                                callback(file_path);
-                            };
-                        }
+                        var type = meta.filetype === "image" ? "Images" : "Files";
+                        window.open("/laravel-filemanager?type=" + type, "fm", "width=900,height=600");
+                        window.SetUrl = function(items) {
+                            callback(items.map(function(x){return x.url;}).join(","), meta.filetype==="image"?{alt:""}:{});
+                        };
                     },
                     images_upload_url: "/laravel-filemanager/upload?type=Images&_token=' . csrf_token() . '",
                     images_upload_handler: function(blobInfo, progress) {
                         return new Promise(function(resolve, reject) {
-                            var xhr, formData;
-                            xhr = new XMLHttpRequest();
+                            var xhr = new XMLHttpRequest();
                             xhr.withCredentials = false;
                             xhr.open("POST", "/laravel-filemanager/upload?type=Images&_token=' . csrf_token() . '");
-                            xhr.upload.onprogress = function(e) {
-                                progress(e.loaded / e.total * 100);
-                            };
+                            xhr.upload.onprogress = function(e) { progress(e.loaded / e.total * 100); };
                             xhr.onload = function() {
-                                var json;
-                                if (xhr.status === 403) {
-                                    reject("HTTP Error: " + xhr.status);
-                                    return;
-                                }
-                                if (xhr.status < 200 || xhr.status >= 300) {
-                                    reject("HTTP Error: " + xhr.status);
-                                    return;
-                                }
-                                json = JSON.parse(xhr.responseText);
-                                if (!json || typeof json.location !== "string") {
-                                    reject("Invalid JSON: " + xhr.responseText);
-                                    return;
-                                }
+                                if (xhr.status < 200 || xhr.status >= 300) { reject("HTTP Error: " + xhr.status); return; }
+                                var json = JSON.parse(xhr.responseText);
+                                if (!json || typeof json.location !== "string") { reject("Invalid JSON"); return; }
                                 resolve(json.location);
                             };
-                            xhr.onerror = function() {
-                                reject("Image upload failed due to a XHR Transport error. Status: " + xhr.status);
-                            };
-                            formData = new FormData();
-                            formData.append("upload", blobInfo.blob(), blobInfo.filename());
-                            xhr.send(formData);
+                            xhr.onerror = function() { reject("XHR error: " + xhr.status); };
+                            var fd = new FormData();
+                            fd.append("upload", blobInfo.blob(), blobInfo.filename());
+                            xhr.send(fd);
+                        });
+                    },
+                    setup: function(editor) {
+                        editor.on("init", function() {
+                            $(document).on("shown.bs.tab", "a[data-toggle=\'tab\']", function() {
+                                hugerte.editors.forEach(function(ed) { ed.execCommand("mceAutoResize"); });
+                            });
                         });
                     }
                 });
             });
-        </script>';
+            </script>';
 
-        return $html;
-    }
+            return $html;
+        }
+
+    /**
+     * Render page content tabs for multi-language editing.
+     *
+     * @deprecated Use renderUnifiedLanguageTabs() instead
+     * @return string
+     */
 
     /**
      * Save page contents for all languages.

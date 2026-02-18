@@ -73,7 +73,7 @@ class ManualController extends AdminController
                 ['text' => __('admin/manual.manual.title'), 'url' => admin_url('manuals')],
                 ['text' => __('admin.edit')]
             )
-            ->body($this->form()->edit($id));
+            ->body($this->form(Manual::findOrFail($id))->edit($id));
     }
 
     /**
@@ -198,27 +198,36 @@ class ManualController extends AdminController
     /**
      * Make a form builder.
      *
+     * @param \App\Models\Manual|null $model
      * @return Form
      */
-    protected function form()
+    protected function form($model = null)
     {
-        $form = new Form(new Manual());
+        $model = $model ?? new Manual();
+        $form = new Form($model);
 
         $form->text('url_slug', __('admin/manual.manual.url_slug'))
             ->rules('required|regex:/^[a-zA-Z0-9_-]+$/')
-            ->creationRules('unique:manual,url_slug')
-            ->updateRules('unique:manual,url_slug,' . $form->model()->id)
             ->help(__('admin/manual.manual_menu.help_url'));
 
-        // Add translatable name fields using helper
-        TranslatableFormHelper::addTranslatableText($form, 'name', __('admin/manual.manual.name'), [
-            'help' => __('admin/manual.manual_menu.help_name'),
-        ]);
-
-        // Add translatable description fields using helper
-        TranslatableFormHelper::addTranslatableTextarea($form, 'description', __('admin/manual.manual.description'), [
-            'help' => __('admin/manual.manual_menu.help_name_optional'),
-        ]);
+        // Translatable fields — one tab group, each tab = one language
+        TranslatableFormHelper::addMultiFieldTranslatableTabs($form, [
+            [
+                'column' => 'name',
+                'label'  => __('admin/manual.manual.name'),
+                'type'   => 'text',
+                'values' => $model->exists ? ($model->getTranslations('name') ?: []) : [],
+                'help'   => __('admin/manual.manual_menu.help_name'),
+            ],
+            [
+                'column'   => 'description',
+                'label'    => __('admin/manual.manual.description'),
+                'type'     => 'textarea',
+                'values'   => $model->exists ? ($model->getTranslations('description') ?: []) : [],
+                'help'     => __('admin/manual.manual_menu.help_name_optional'),
+                'required' => false,
+            ],
+        ], __('admin/manual.manual.name') . ' / ' . __('admin/manual.manual.description'));
 
         $form->switch('is_public', __('admin/manual.manual.is_public'))
             ->default(false)
@@ -226,10 +235,39 @@ class ManualController extends AdminController
 
         // Add custom validation
         $form->saving(function (Form $form) {
-            $nameValues = is_array($form->name) ? array_filter($form->name) : [$form->name];
+            // Validate url_slug uniqueness manually (exclude self on update)
+            $slug = request('url_slug');
+            $currentId = $form->model()->id; // null when creating, has value when updating
+
+            $uniqueRule = \Illuminate\Validation\Rule::unique('manual', 'url_slug');
+            if ($currentId) {
+                $uniqueRule->ignore($currentId);
+            }
+
+            $validator = \Illuminate\Support\Facades\Validator::make(
+                ['url_slug' => $slug],
+                ['url_slug' => $uniqueRule]
+            );
+            if ($validator->fails()) {
+                admin_error('Error', "The URL Slug \"{$slug}\" has already been taken.");
+                return back()->withInput();
+            }
+
+            // Read translatable fields from request (submitted via TAB html fields)
+            $nameData = request('name', []);
+            $nameValues = is_array($nameData) ? array_filter($nameData) : [];
+
             if (empty($nameValues)) {
                 admin_error(__('admin/manual.error.create'), __('admin/manual.validation.name_required'));
                 return back()->withInput();
+            }
+
+            $form->model()->name = $nameValues;
+
+            $descData = request('description', []);
+            $descValues = is_array($descData) ? array_filter($descData) : [];
+            if (!empty($descValues)) {
+                $form->model()->description = $descValues;
             }
         });
 

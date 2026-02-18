@@ -99,7 +99,7 @@ class ManualMenuController extends AdminController
                 ['text' => __('admin/manual.manual_menu.title'), 'url' => admin_url('manual-menus')],
                 ['text' => __('admin.edit')]
             )
-            ->body($this->form()->edit($id));
+            ->body($this->form(ManualMenu::findOrFail($id))->edit($id));
     }
 
     /**
@@ -225,9 +225,10 @@ class ManualMenuController extends AdminController
      *
      * @return Form
      */
-    protected function form()
+    protected function form($model = null)
     {
-        $form = new Form(new ManualMenu());
+        $model = $model ?? new ManualMenu();
+        $form = new Form($model);
 
         // Get manual_id from query parameter if creating
         $manualId = request('manual_id');
@@ -272,9 +273,15 @@ class ManualMenuController extends AdminController
             })
             ->help(__('admin/manual.manual_menu.help_parent'));
 
-        // Add translatable name fields using helper
-        TranslatableFormHelper::addTranslatableText($form, 'name', __('admin/manual.manual_menu.name'), [
-            'help' => __('admin/manual.manual_menu.help_name'),
+        // Translatable name — TAB layout
+        TranslatableFormHelper::addMultiFieldTranslatableTabs($form, [
+            [
+                'column' => 'name',
+                'label'  => __('admin/manual.manual_menu.name'),
+                'type'   => 'text',
+                'values' => $model->exists ? ($model->getTranslations('name') ?: []) : [],
+                'help'   => __('admin/manual.manual_menu.help_name'),
+            ],
         ]);
 
         // Click action selection
@@ -390,6 +397,13 @@ class ManualMenuController extends AdminController
             $url = request('url');
             $pageInfoId = request('manual_page_info_id');
             $parentId = request('parent_id');
+
+            // Handle translatable name (submitted via TAB html fields)
+            $nameData = request('name', []);
+            $nameValues = is_array($nameData) ? array_filter($nameData) : [];
+            if (!empty($nameValues)) {
+                $form->model()->name = $nameValues;
+            }
 
             // Validate based on click_action
             if ($clickAction === 'external' && empty($url)) {

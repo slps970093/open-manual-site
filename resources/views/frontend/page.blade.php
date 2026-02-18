@@ -80,10 +80,10 @@
     <div class="d-flex justify-content-between align-items-center p-2 gap-2">
         <button class="btn btn-sm" id="mobileMenuBtn" style="background: none; border: none; font-size: 1.5rem; z-index: 1001; color: var(--text-dark); padding: 0; flex-shrink: 0;">☰</button>
         <span class="fw-bold text-center flex-grow-1" style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ $pageInfo->getTranslation('title', $currentLang) }}</span>
-        <a href="{{ route('frontend.manual', ['slug' => $manual->url_slug]) }}" class="btn btn-sm btn-light" style="white-space: nowrap; flex-shrink: 0;">← 清單</a>
     </div>
-    <div class="px-2 pb-2">
+    <div class="d-flex justify-content-between align-items-center px-2 pb-2 gap-2">
         <x-language-selector id="mobileLanguageSelector" size="sm" />
+        <a href="{{ route('frontend.manual', ['slug' => $manual->url_slug]) }}" class="btn btn-sm btn-light" style="white-space: nowrap; flex-shrink: 0;">← 清單</a>
     </div>
 </div>
 
